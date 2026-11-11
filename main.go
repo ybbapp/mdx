@@ -2,39 +2,44 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ybbapp/mdx/internal/termview"
 )
 
-func run(args []string) error {
+func parseArgs(args []string) (string, string, error) {
 	if len(args) == 0 {
-		return fmt.Errorf("用法: mdx <cat|lens> 文件.mdx")
+		return "", "", fmt.Errorf("请指定一个文件；使用 mdx --help 查看用法")
 	}
-	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(os.Stdout, "用法: mdx <cat|lens> 文件.mdx\n\n  cat   输出到终端滚动历史\n  lens  在全屏阅读器中打开")
-		return nil
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
+		return "help", "", nil
 	}
-	mode := args[0]
-	if mode != "cat" && mode != "lens" {
-		return fmt.Errorf("未知命令 %q；使用 mdx help 查看用法", mode)
+	if args[0] == "cat" {
+		if len(args) != 2 {
+			return "", "", fmt.Errorf("用法: mdx cat 文件.mdx")
+		}
+		return "cat", args[1], nil
 	}
-	flags := flag.NewFlagSet(mode, flag.ContinueOnError)
-	flags.Usage = func() { fmt.Fprintf(flags.Output(), "用法: mdx %s 文件.mdx\n", mode) }
-	if err := flags.Parse(args[1:]); err != nil {
+	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
+		return "", "", fmt.Errorf("用法: mdx 文件.mdx 或 mdx cat 文件.mdx")
+	}
+	return "view", args[0], nil
+}
+func run(args []string) error {
+	mode, path, err := parseArgs(args)
+	if err != nil {
 		return err
 	}
-	if flags.NArg() != 1 {
-		flags.Usage()
-		return fmt.Errorf("请指定一个文件")
-	}
 	switch mode {
+	case "help":
+		fmt.Fprintln(os.Stdout, "用法: mdx 文件.mdx      交互式阅读\n      mdx cat 文件.mdx  直接输出到终端或管道")
+		return nil
 	case "cat":
-		return termview.Print(flags.Arg(0), os.Stdout)
+		return termview.Print(path, os.Stdout)
 	default:
-		return termview.Run(flags.Arg(0))
+		return termview.Run(path)
 	}
 }
 func main() {

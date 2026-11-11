@@ -10,7 +10,8 @@ for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64 windows/arm64 wi
   if [ "$os" = windows ]; then exe=mdx.exe; fi
   GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$temp/$exe" .
   cp README.md "$temp/README.md"
-  if [ "$os" = windows ]; then (cd "$temp" && zip -q "$out/$name.zip" "$exe" README.md); else tar -czf "$out/$name.tar.gz" -C "$temp" "$exe" README.md; fi
+  cp examples/sample.mdx "$temp/sample.mdx"
+  if [ "$os" = windows ]; then (cd "$temp" && zip -q "$out/$name.zip" "$exe" README.md sample.mdx); else tar -czf "$out/$name.tar.gz" -C "$temp" "$exe" README.md sample.mdx; fi
   rm -rf "$temp"
 done
 (cd "$out" && shasum -a 256 ./*.tar.gz ./*.zip > SHA256SUMS)
