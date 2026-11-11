@@ -4,21 +4,34 @@
 
 ## 安装
 
+### Homebrew
+
+macOS 或 Linux：
+
+```sh
+brew install ybbapp/tap/mdx
+```
+
+升级时运行 `brew upgrade ybbapp/tap/mdx`。Homebrew 安装不需要 Go。
+
+### Go
+
 需要 Go 1.27.3 或更新版本：
 
 ```sh
 go install github.com/ybbapp/mdx@latest
 ```
 
-也可以从 [Releases](https://github.com/ybbapp/mdx/releases) 下载预编译程序。
-
+也可以从 [Releases](https://github.com/ybbapp/mdx/releases) 下载 macOS、Linux 或 Windows 预编译程序。
 ## 使用
 
 ```sh
 mdx document.mdx       # 交互式阅读
 mdx cat document.mdx   # 直接输出，适合管道
-mdx examples/sample.mdx # 试用示例
+mdx examples/sample.mdx # 在源码仓库中试用示例
 ```
+
+通过 Homebrew 安装后，可以运行 `mdx "$(brew --prefix)/share/mdx/sample.mdx"` 打开随包提供的示例。
 
 `cat` 展开已支持的标签和折叠内容，不执行交互；重定向到文件或管道时不输出颜色控制符。
 
@@ -28,4 +41,4 @@ mdx examples/sample.mdx # 试用示例
 
 ## 发布
 
-在干净且已推送的 main 分支运行 `scripts/release.sh vX.Y.Z`。脚本本地交叉编译 macOS、Linux 和 Windows 的 amd64、arm64 二进制文件，并通过 GitHub CLI 上传；不依赖 GitHub Actions。
+在干净且已推送的 main 分支运行 `scripts/release.sh vX.Y.Z`。脚本本地交叉编译 macOS、Linux 和 Windows 的 amd64、arm64 二进制文件，并通过 GitHub CLI 上传；不依赖 GitHub Actions。发布新版本后，还需要更新 [Homebrew formula](https://github.com/ybbapp/homebrew-tap/blob/main/Formula/mdx.rb) 中的版本、各平台下载地址和 SHA-256，然后推送 tap。
