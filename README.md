@@ -23,6 +23,7 @@ go install github.com/ybbapp/mdx@latest
 ```
 
 也可以从 [Releases](https://github.com/ybbapp/mdx/releases) 下载 macOS、Linux 或 Windows 预编译程序。
+
 ## 使用
 
 ```sh
