@@ -15,14 +15,13 @@ go install github.com/ybbapp/mdx@latest
 ## 使用
 
 ```sh
-mdx peek document.mdx  # 内联交互，使用终端原生滚动历史
 mdx cat document.mdx   # 直接输出，适合管道
 mdx lens document.mdx  # 全屏阅读器
 ```
 
-`peek` 中用 Tab 选择操作项、Enter 操作、`q` 退出。文件变化或组件状态改变时，新版本会追加到终端历史；调整窗口后按 `r` 按新宽度重排。鼠标滚动和文本选择由终端处理；当前不支持鼠标点击组件。
+`cat` 展开已支持的标签和折叠内容，不执行交互；重定向到文件或管道时不输出颜色控制符。
 
-`cat` 展开已支持的标签和折叠内容，不执行交互；重定向到文件或管道时不输出颜色控制符。`lens` 中用方向键或 `j` / `k` 滚动，Tab 选择、Enter 操作，`/` 搜索，`q` 退出。
+`lens` 支持 Vim 风格的导航：`j` / `k` 或方向键逐行滚动，`Ctrl-d` / `Ctrl-u` 翻半页，`Ctrl-f` / `Ctrl-b` 翻整页，`gg` 跳到开头，`G` 跳到末尾。按 `/` 搜索，`n` / `N` 查找下一个或上一个匹配项；Tab 选择交互项，Enter 操作，`q` 退出。文件修改后自动刷新。
 
 目前支持单独占一行的 `<Tabs>` / `<TabItem label="...">`、`<Accordion title="...">` 和 `<Callout title="...">`。未知的独占行组件会显示提示并保留子内容。不会执行 MDX 表达式、import 或自定义 React 组件，也不支持任意 JSX 布局。
 

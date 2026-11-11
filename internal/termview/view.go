@@ -120,6 +120,8 @@ func Run(path string) error {
 	message := ""
 	search := ""
 	searching := false
+	searchIndex := -1
+	pendingG := false
 	draw := func() error {
 		width, height, e := term.GetSize(int(os.Stdout.Fd()))
 		if e != nil {
@@ -178,20 +180,22 @@ func Run(path string) error {
 		_, e = os.Stdout.WriteString(b.String())
 		return e
 	}
-	find := func() {
+	find := func(direction int) {
 		q := strings.ToLower(search)
-		if q == "" {
+		if q == "" || len(lines) == 0 {
 			return
 		}
-		for i := offset + 1; i < len(lines); i++ {
-			if strings.Contains(strings.ToLower(ansi.Strip(lines[i])), q) {
-				offset = i
-				message = "找到: " + search
-				return
-			}
+		start := searchIndex
+		if start < 0 {
+			start = offset - direction
 		}
-		for i := 0; i <= offset && i < len(lines); i++ {
+		for step := 1; step <= len(lines); step++ {
+			i := (start + direction*step) % len(lines)
+			if i < 0 {
+				i += len(lines)
+			}
 			if strings.Contains(strings.ToLower(ansi.Strip(lines[i])), q) {
+				searchIndex = i
 				offset = i
 				message = "找到: " + search
 				return
@@ -199,6 +203,7 @@ func Run(path string) error {
 		}
 		message = "未找到: " + search
 	}
+
 	if err = draw(); err != nil {
 		return err
 	}
@@ -223,7 +228,8 @@ func Run(path string) error {
 				switch key {
 				case 13, 10:
 					searching = false
-					find()
+					searchIndex = -1
+					find(1)
 				case 27:
 					searching = false
 					search = ""
@@ -234,11 +240,14 @@ func Run(path string) error {
 					}
 				default:
 					if key >= 32 {
-						search += string(key)
+						search += string([]byte{key})
 					}
 				}
 			} else {
 				message = ""
+				if key != 'g' {
+					pendingG = false
+				}
 				switch key {
 				case 'q', 3:
 					return nil
@@ -246,14 +255,33 @@ func Run(path string) error {
 					offset++
 				case 'k':
 					offset--
-				case ' ':
+				case 'g':
+					if pendingG {
+						offset = 0
+						pendingG = false
+					} else {
+						pendingG = true
+					}
+				case 'G':
+					offset = len(lines)
+				case ' ', 6: // Ctrl-f
 					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
 					offset += h - 3
+				case 2: // Ctrl-b
+					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
+					offset -= h - 3
+				case 4: // Ctrl-d
+					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
+					offset += (h - 3) / 2
+				case 21: // Ctrl-u
+					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
+					offset -= (h - 3) / 2
 				case '/':
 					search = ""
 					searching = true
 				case 'n':
-					find()
+					searchIndex = -1
+					find(1)
 				case '\t':
 					if len(actions) > 0 {
 						selected = (selected + 1) % len(actions)

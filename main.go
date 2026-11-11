@@ -11,14 +11,14 @@ import (
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("用法: mdx <peek|cat|lens> 文件.mdx")
+		return fmt.Errorf("用法: mdx <cat|lens> 文件.mdx")
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(os.Stdout, "用法: mdx <peek|cat|lens> 文件.mdx\n\n  peek  在终端内联交互\n  cat   输出到终端滚动历史\n  lens  在全屏阅读器中打开")
+		fmt.Fprintln(os.Stdout, "用法: mdx <cat|lens> 文件.mdx\n\n  cat   输出到终端滚动历史\n  lens  在全屏阅读器中打开")
 		return nil
 	}
 	mode := args[0]
-	if mode != "peek" && mode != "cat" && mode != "lens" {
+	if mode != "cat" && mode != "lens" {
 		return fmt.Errorf("未知命令 %q；使用 mdx help 查看用法", mode)
 	}
 	flags := flag.NewFlagSet(mode, flag.ContinueOnError)
@@ -31,8 +31,6 @@ func run(args []string) error {
 		return fmt.Errorf("请指定一个文件")
 	}
 	switch mode {
-	case "peek":
-		return termview.RunInline(flags.Arg(0))
 	case "cat":
 		return termview.Print(flags.Arg(0), os.Stdout)
 	default:
