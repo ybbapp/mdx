@@ -80,6 +80,23 @@ func openLink(base, target string) error {
 	}
 	return cmd.Start()
 }
+
+// frameUpdate returns the escape sequences that turn prev into next while
+// touching only rows that differ, so redraws never blank the screen.
+func frameUpdate(prev, next []string) string {
+	var b strings.Builder
+	for i, line := range next {
+		if i < len(prev) && prev[i] == line {
+			continue
+		}
+		fmt.Fprintf(&b, "\x1b[%d;1H%s\x1b[K", i+1, line)
+	}
+	for i := len(next); i < len(prev); i++ {
+		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[K", i+1)
+	}
+	return b.String()
+}
+
 func Run(path string) error {
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
 		return errors.New("终端预览需要交互式终端")
@@ -99,7 +116,7 @@ func Run(path string) error {
 		return err
 	}
 	defer term.Restore(int(os.Stdin.Fd()), old)
-	fmt.Print("\x1b[?1049h\x1b[?25l")
+	fmt.Print("\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J")
 	defer fmt.Print("\x1b[?25h\x1b[?1049l")
 	input := make(chan byte, 32)
 	go func() {
@@ -117,19 +134,22 @@ func Run(path string) error {
 	offset, selected := 0, 0
 	var actions []action
 	var lines []string
+	var frame []string
+	width, height := 0, 0
 	message := ""
 	search := ""
 	searching := false
 	searchIndex := -1
 	pendingG := false
 	draw := func() error {
-		width, height, e := term.GetSize(int(os.Stdout.Fd()))
+		w, h, e := term.GetSize(int(os.Stdout.Fd()))
 		if e != nil {
 			return e
 		}
-		if width < 20 || height < 6 {
+		if w < 20 || h < 6 {
 			return errors.New("终端窗口太小")
 		}
+		width, height = w, h
 		md, a := doc.markdown()
 		actions = a
 		if selected >= len(actions) {
@@ -155,14 +175,14 @@ func Run(path string) error {
 		if offset < 0 {
 			offset = 0
 		}
-		var b strings.Builder
-		b.WriteString("\x1b[H\x1b[2J")
-		fmt.Fprintf(&b, " mdx · %s\x1b[K\r\n", ansi.Truncate(filepath.Base(path), width-12, "…"))
+		next := make([]string, 0, height-1)
+		next = append(next, fmt.Sprintf(" mdx · %s", ansi.Truncate(filepath.Base(path), width-12, "…")))
 		for i := 0; i < page; i++ {
+			line := ""
 			if offset+i < len(lines) {
-				b.WriteString(lines[offset+i])
+				line = lines[offset+i]
 			}
-			b.WriteString("\x1b[K\r\n")
+			next = append(next, line)
 		}
 		info := "↑↓/jk 滚动 · Tab 选择 · Enter 操作 · / 搜索 · q 退出"
 		if len(actions) > 0 {
@@ -175,9 +195,15 @@ func Run(path string) error {
 		if searching {
 			info = "搜索: " + search
 		}
-		b.WriteString(ansi.Truncate(info, width-1, "…"))
-		b.WriteString("\x1b[K")
-		_, e = os.Stdout.WriteString(b.String())
+		next = append(next, ansi.Truncate(info, width-1, "…"))
+		// Repaint only the rows that changed, so idle ticks and small
+		// interactions never clear the screen and cause visible flicker.
+		out := frameUpdate(frame, next)
+		frame = next
+		if out == "" {
+			return nil
+		}
+		_, e = os.Stdout.WriteString(out)
 		return e
 	}
 	find := func(direction int) {
@@ -212,6 +238,7 @@ func Run(path string) error {
 	for {
 		select {
 		case <-ticker.C:
+			changed := false
 			if b, e := os.ReadFile(path); e == nil && string(b) != last {
 				next := parseDocument(string(b))
 				next.choices = doc.choices
@@ -219,9 +246,13 @@ func Run(path string) error {
 				doc = next
 				last = string(b)
 				message = "文件已刷新"
+				changed = true
 			}
-			if err = draw(); err != nil {
-				return err
+			if w, h, e := term.GetSize(int(os.Stdout.Fd())); e == nil && (w != width || h != height) {
+				changed = true
+			}
+			if !changed {
+				continue
 			}
 		case key := <-input:
 			if searching {
@@ -320,9 +351,9 @@ func Run(path string) error {
 					}
 				}
 			}
-			if err = draw(); err != nil {
-				return err
-			}
+		}
+		if err = draw(); err != nil {
+			return err
 		}
 	}
 }
