@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ func Print(path string, output io.Writer) error {
 	}
 	doc := parseDocument(string(raw))
 	md, _ := doc.render(true)
+	_, links := doc.markdown()
 	width := 80
 	color := false
 	if f, ok := output.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
@@ -50,9 +52,43 @@ func Print(path string, output io.Writer) error {
 	}
 	if !color {
 		rendered = ansi.Strip(rendered)
+	} else {
+		rendered = clickableLinks(rendered, links)
 	}
 	_, err = io.WriteString(output, rendered)
 	return err
+}
+
+// clickableLinks gives each rendered URL fragment the complete destination. Glamour
+// wraps long URLs across lines, which otherwise makes terminal auto-detection open
+// only the first fragment.
+func clickableLinks(rendered string, actions []action) string {
+	seen := map[string]bool{}
+	for _, a := range actions {
+		target := a.target
+		if a.kind != "link" || seen[target] || !(strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://")) || strings.ContainsAny(target, "\x1b\a\r\n") {
+			continue
+		}
+		seen[target] = true
+		var pattern strings.Builder
+		for i, c := range target {
+			if i > 0 {
+				pattern.WriteString(`(?:\x1b\[[0-9;:]*m|[ \t\r\n])*`)
+			}
+			pattern.WriteString(regexp.QuoteMeta(string(c)))
+		}
+		re := regexp.MustCompile(pattern.String())
+		rendered = re.ReplaceAllStringFunc(rendered, func(match string) string {
+			parts := strings.Split(match, "\n")
+			for i, part := range parts {
+				if strings.TrimSpace(ansi.Strip(part)) != "" {
+					parts[i] = "\x1b]8;;" + target + "\x1b\\" + part + "\x1b]8;;\x1b\\"
+				}
+			}
+			return strings.Join(parts, "\n")
+		})
+	}
+	return rendered
 }
 
 func openLink(base, target string) error {
@@ -95,6 +131,26 @@ func frameUpdate(prev, next []string) string {
 		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[K", i+1)
 	}
 	return b.String()
+}
+
+// viewerTitle returns the one-line header shown above the document.
+func viewerTitle(name, message, search string, searching bool) string {
+	if searching {
+		return "搜索: " + search + " · Enter 查找 · Esc 取消"
+	}
+	if message != "" {
+		return message
+	}
+	return "mdx · " + name
+}
+
+// pageLines returns the number of document lines a terminal of the given
+// height can show below the header. The viewer must not reserve a footer.
+func pageLines(height int) int {
+	if height < 2 {
+		return 0
+	}
+	return height - 1
 }
 
 func Run(path string) error {
@@ -163,8 +219,9 @@ func Run(path string) error {
 		if e != nil {
 			return e
 		}
+		rendered = clickableLinks(rendered, actions)
 		lines = strings.Split(strings.ReplaceAll(rendered, "\r\n", "\n"), "\n")
-		page := height - 3
+		page := pageLines(height)
 		max := len(lines) - page
 		if max < 0 {
 			max = 0
@@ -175,8 +232,9 @@ func Run(path string) error {
 		if offset < 0 {
 			offset = 0
 		}
-		next := make([]string, 0, height-1)
-		next = append(next, fmt.Sprintf(" mdx · %s", ansi.Truncate(filepath.Base(path), width-12, "…")))
+		title := viewerTitle(filepath.Base(path), message, search, searching)
+		next := make([]string, 0, page+1)
+		next = append(next, ansi.Truncate(" "+title, width-1, "…"))
 		for i := 0; i < page; i++ {
 			line := ""
 			if offset+i < len(lines) {
@@ -184,18 +242,6 @@ func Run(path string) error {
 			}
 			next = append(next, line)
 		}
-		info := "↑↓/jk 滚动 · Tab 选择 · Enter 操作 · / 搜索 · q 退出"
-		if len(actions) > 0 {
-			a := actions[selected]
-			info = fmt.Sprintf("[%d/%d] %s: %s · Tab 选择 · Enter 操作", selected+1, len(actions), a.kind, a.label)
-		}
-		if message != "" {
-			info = message
-		}
-		if searching {
-			info = "搜索: " + search
-		}
-		next = append(next, ansi.Truncate(info, width-1, "…"))
 		// Repaint only the rows that changed, so idle ticks and small
 		// interactions never clear the screen and cause visible flicker.
 		out := frameUpdate(frame, next)
@@ -297,16 +343,16 @@ func Run(path string) error {
 					offset = len(lines)
 				case ' ', 6: // Ctrl-f
 					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
-					offset += h - 3
+					offset += pageLines(h)
 				case 2: // Ctrl-b
 					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
-					offset -= h - 3
+					offset -= pageLines(h)
 				case 4: // Ctrl-d
 					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
-					offset += (h - 3) / 2
+					offset += pageLines(h) / 2
 				case 21: // Ctrl-u
 					_, h, _ := term.GetSize(int(os.Stdout.Fd()))
-					offset -= (h - 3) / 2
+					offset -= pageLines(h) / 2
 				case '/':
 					search = ""
 					searching = true
@@ -316,6 +362,8 @@ func Run(path string) error {
 				case '\t':
 					if len(actions) > 0 {
 						selected = (selected + 1) % len(actions)
+						a := actions[selected]
+						message = fmt.Sprintf("%d/%d %s · Enter 操作", selected+1, len(actions), a.label)
 					}
 				case 13, 10:
 					if len(actions) > 0 {
